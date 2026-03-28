@@ -8,12 +8,11 @@ import "core:os"
 
 White := TGAColor {{255, 255, 255, 255}, 4}
 Black := TGAColor {{0, 0, 0, 255}, 4}
-Green := TGAColor {{  0, 255,   0, 255}, 4}
-Red := TGAColor {{  0,   0, 255, 255}, 4}
-Blue := TGAColor {{255, 128,  64, 255}, 4}
-Yellow := TGAColor {{  0, 200, 255, 255}, 4}
+Green := TGAColor {{0, 255, 0, 255}, 4}
+Red := TGAColor {{0, 0, 255, 255}, 4}
+Blue := TGAColor {{255, 128, 64, 255}, 4}
+Yellow := TGAColor {{0, 200, 255, 255}, 4}
 
-//width, height := 256, 256
 width, height := 1024, 1024
 
 // Bresenham's line algorithm
@@ -103,10 +102,28 @@ triangle :: proc(ax, ay, az, bx, by, bz, cx, cy, cz: int, zbuffer: ^TGAImage, fr
             // negative barycentric coordinate => the pixel is outside the triangle
             if alpha<0 || beta<0 || gamma<0 do continue
             z := u8(alpha * f64(az) + beta * f64(bz) + gamma * f64(cz))
-            image_set(zbuffer, x, y, {{z, 0, 0, 0}, 4});
-            image_set(framebuffer, x, y, color);
+            image_set(zbuffer, x, y, {{z, 0, 0, 0}, 4})
+            image_set(framebuffer, x, y, color)
         } 
     }
+}
+
+rot :: proc(v: Vec3) -> Vec3 {
+    a := math.PI / 6
+    c := math.cos(a)
+    s := math.sin(a)
+
+    ry := matrix[3, 3]f64 {
+        c, 0, s,
+        0, 1, 0,
+       -s, 0, c,
+    }
+    return ry * v
+}
+
+persp :: proc(v: Vec3) -> Vec3 {
+    c := 3.
+    return v / (1-v.z/c)
 }
 
 project :: proc(v: Vec3) -> (int, int, int) {
@@ -133,9 +150,9 @@ main :: proc() {
     rand.reset(seed)
 
     for i in 0..<nfaces(model) {
-        ax, ay, az := project(vert(model, i, 0))
-        bx, by, bz := project(vert(model, i, 1))
-        cx, cy, cz := project(vert(model, i, 2))
+        ax, ay, az := project(persp(rot(vert(model, i, 0))))
+        bx, by, bz := project(persp(rot(vert(model, i, 1))))
+        cx, cy, cz := project(persp(rot(vert(model, i, 2))))
         rnd: TGAColor
         rnd.bytespp = 4
         for c in 0..<3 {
