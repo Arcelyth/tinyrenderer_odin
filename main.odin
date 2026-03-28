@@ -13,7 +13,8 @@ Red := TGAColor {{  0,   0, 255, 255}, 4}
 Blue := TGAColor {{255, 128,  64, 255}, 4}
 Yellow := TGAColor {{  0, 200, 255, 255}, 4}
 
-width, height := 256, 256
+//width, height := 256, 256
+width, height := 1024, 1024
 
 // Bresenham's line algorithm
 line :: proc(x0, y0, x1, y1: int, framebuffer: ^TGAImage, color: TGAColor) {
@@ -85,7 +86,7 @@ signed_triangle_area :: proc(ax, ay, bx, by, cx, cy: int) -> f64 {
 }
 
 // Bounding box rasterization
-triangle :: proc(ax, ay, bx, by, cx, cy: int, framebuffer: ^TGAImage, color: TGAColor) {
+triangle :: proc(ax, ay, az, bx, by, bz, cx, cy, cz: int, zbuffer: ^TGAImage, framebuffer: ^TGAImage, color: TGAColor) {
     bbminx := math.min(math.min(ax, bx), cx)
     bbminy := math.min(math.min(ay, by), cy)
     bbmaxx := math.max(math.max(ax, bx), cx)
@@ -99,16 +100,17 @@ triangle :: proc(ax, ay, bx, by, cx, cy: int, framebuffer: ^TGAImage, color: TGA
             alpha := signed_triangle_area(x, y, bx, by, cx, cy) / total_area
             beta := signed_triangle_area(x, y, cx, cy, ax, ay) / total_area
             gamma := signed_triangle_area(x, y, ax, ay, bx, by) / total_area
-
             // negative barycentric coordinate => the pixel is outside the triangle
             if alpha<0 || beta<0 || gamma<0 do continue
+            z := u8(alpha * f64(az) + beta * f64(bz) + gamma * f64(cz))
+            image_set(zbuffer, x, y, {{z, 0, 0, 0}, 4});
             image_set(framebuffer, x, y, color);
         } 
     }
 }
 
-project :: proc(v: Vec3) -> (int, int) {
-    return int((v.x + 1.) * f64(width)/2), int((v.y + 1.) * f64(height)/2)
+project :: proc(v: Vec3) -> (int, int, int) {
+    return int((v.x + 1.) * f64(width)/2), int((v.y + 1.) * f64(height)/2), int((v.z + 1.) * 255./2)
 }
 
 main :: proc() {
@@ -125,23 +127,28 @@ main :: proc() {
     }
 
     framebuffer := image_init(width, height, TGAFormat.RGB, Black)
+    zbuffer := image_init(width, height, TGAFormat.GrayScale, Black)
 
     seed := u64(time.to_unix_nanoseconds(time.now()))
     rand.reset(seed)
 
     for i in 0..<nfaces(model) {
-        ax, ay := project(vert(model, i, 0))
-        bx, by := project(vert(model, i, 1))
-        cx, cy := project(vert(model, i, 2))
+        ax, ay, az := project(vert(model, i, 0))
+        bx, by, bz := project(vert(model, i, 1))
+        cx, cy, cz := project(vert(model, i, 2))
         rnd: TGAColor
         rnd.bytespp = 4
         for c in 0..<3 {
             rnd.bgra[c] = u8(rand.uint32() % 255)
-            triangle(ax, ay, bx, by, cx, cy, &framebuffer, rnd)
+            triangle(ax, ay, az, bx, by, bz, cx, cy, cz, &zbuffer, &framebuffer, rnd)
         }
     }
-    if !write_tga_file(framebuffer, "output.tga", true, true) {
+    if !write_tga_file(framebuffer, "framebuffer.tga", true, true) {
         fmt.println("Failed to write tga file.")
     }
+    if !write_tga_file(zbuffer, "zbuffer.tga", true, true) {
+        fmt.println("Failed to write tga file.")
+    }
+
 }
 
