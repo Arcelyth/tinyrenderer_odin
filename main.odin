@@ -2,6 +2,8 @@ package main
 
 import "core:fmt"
 import "core:math"
+import "core:math/rand"
+import "core:time"
 
 White := TGAColor {{255, 255, 255, 255}, 4}
 Black := TGAColor {{0, 0, 0, 255}, 4}
@@ -10,35 +12,67 @@ Red := TGAColor {{  0,   0, 255, 255}, 4}
 Blue := TGAColor {{255, 128,  64, 255}, 4}
 Yellow := TGAColor {{  0, 200, 255, 255}, 4}
 
-line :: proc(ax, ay, bx, by: int, framebuffer: ^TGAImage, color: TGAColor) {
-    for t := 0.; t < 1.; t += .02 {
-        x := math.round(f64(ax) + f64(bx - ax) * t)
-        y := math.round(f64(ay) + f64(by - ay) * t)
-        image_set(framebuffer, int(x), int(y), color)
+// Bresenham's line algorithm
+line :: proc(x0, y0, x1, y1: int, framebuffer: ^TGAImage, color: TGAColor) {
+    ax, ay, bx, by := x0, y0, x1, y1
+    steep := false
+    // if line is steep, transpose the image
+    if abs(ax - bx) < abs(ay - by) {
+        ax, ay = ay, ax
+        bx, by = by, bx
+        steep = true
     }
+    if ax > bx {
+        ax, bx = bx, ax
+        ay, by = by, ay
+    }
+    dx := bx - ax
+    dy := abs(ay - by)
+    error := 0
+    y := ay
+    ystep := ay < by ? 1 : -1
+
+    for x in ax..=bx {
+        // if transposed, de−transpose
+        if steep {
+            image_set(framebuffer, y, x, color)
+        } else {
+            image_set(framebuffer, x, y, color)
+        }
+        error += dy
+        if error * 2 >= dx {
+            y += ystep
+            error -= dx
+        }
+    }
+}
+
+random_u8 :: proc() -> u8 {
+    return u8(rand.uint32() % 256)
 }
 
 main :: proc() {
     width, height := 64, 64
     framebuffer := image_init(width, height, TGAFormat.RGB, Black)
 
-    ax, ay := 7, 3
-    bx, by := 12, 37
-    cx, cy := 62, 53
-    image_set(&framebuffer, ax, ay, White)
-    image_set(&framebuffer, bx, by, White)
-    image_set(&framebuffer, cx, cy, White)
+    seed := u64(time.to_unix_nanoseconds(time.now()))
+    rand.reset(seed)
+    for i in 0..<(1<<24) {
+        ax := int(rand.uint32()) % framebuffer.width
+        ay := int(rand.uint32()) % framebuffer.height
+        bx := int(rand.uint32()) % framebuffer.width
+        by := int(rand.uint32()) % framebuffer.height
+        c := TGAColor{
+            bgra = {random_u8(), random_u8(), random_u8(), 255},
+            bytespp = 4,
+        }
+        line(ax, ay, bx, by, &framebuffer, c)
+    }
 
-    line(ax, ay, bx, by, &framebuffer, Blue);
-    line(cx, cy, bx, by, &framebuffer, Green);
-    line(cx, cy, ax, ay, &framebuffer, Yellow);
-    line(ax, ay, cx, cy, &framebuffer, Red);
-
-    if write_tga_file(framebuffer, "output.tga", false, true) {
-        fmt.println("File saved successfully!")
+    if !write_tga_file(framebuffer, "output.tga", true, true) {
+        fmt.println("Failed to write tga file.")
     }
 }
-
 
 
 
