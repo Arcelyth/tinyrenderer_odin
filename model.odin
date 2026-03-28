@@ -4,10 +4,17 @@ import "core:os"
 import "core:strings"
 import "core:strconv"
 import "core:fmt"
+import "core:math"
+import "core:slice"
 
 Model :: struct {
     verts:     [dynamic]Vec3,
     facet_vrt: [dynamic]int,
+}
+
+Face_Depth :: struct {
+    index: int,
+    depth: f64,
 }
 
 nverts :: proc(m: Model) -> int {
@@ -70,9 +77,46 @@ model_load :: proc(filename: string) -> (m: Model, ok: bool) {
             }
         }
     }
-
+    sort_model_faces_by_z(&m)
     fmt.printf("# v# %d f# %d\n", len(m.verts), len(m.facet_vrt)/3)
     return m, true
+}
+
+sort_model_faces_by_z :: proc(m: ^Model) {
+    n_faces := len(m.facet_vrt) / 3
+    
+    depths := make([]Face_Depth, n_faces)
+    defer delete(depths)
+
+    // calculate each triangle's min Z value
+    for i in 0..<n_faces {
+        v0 := get_face_vert(m^, i, 0)
+        v1 := get_face_vert(m^, i, 1)
+        v2 := get_face_vert(m^, i, 2)
+        
+        min_z := math.min(v0.z, math.min(v1.z, v2.z))
+        
+        depths[i] = {
+            index = i,
+            depth = min_z,
+        }
+    }
+
+    slice.sort_by(depths, proc(a, b: Face_Depth) -> bool {
+        return a.depth < b.depth
+    })
+
+    new_facet_vrt := make([dynamic]int, len(m.facet_vrt))
+    
+    for i in 0..<n_faces {
+        old_idx := depths[i].index
+        new_facet_vrt[i*3 + 0] = m.facet_vrt[old_idx*3 + 0]
+        new_facet_vrt[i*3 + 1] = m.facet_vrt[old_idx*3 + 1]
+        new_facet_vrt[i*3 + 2] = m.facet_vrt[old_idx*3 + 2]
+    }
+
+    delete(m.facet_vrt)
+    m.facet_vrt = new_facet_vrt
 }
 
 model_destroy :: proc(m: ^Model) {
